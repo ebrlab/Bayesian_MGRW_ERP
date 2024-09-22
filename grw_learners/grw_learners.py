@@ -9,9 +9,9 @@ import pandas as pd
 import numpy as np
 import mne
 import matplotlib.pyplot as plt 
-import pymc3 as pm
+import pymc as pm
 import arviz as az
-import theano.tensor as tt
+import pytensor.tensor as pt
 import pickle
 
 #####plotting parameters
@@ -31,7 +31,6 @@ plt.rcParams['font.serif'] = "Cambria Math"
 #             sys.stdout = old_stdout
 
 # ############################## Import and prepare epochs ######################
-os.chdir("/grw_learners/")
 
 # files_l = glob.glob("/epochs_l/*t4_epo.fif")
 # files = files_l
@@ -75,9 +74,9 @@ os.chdir("/grw_learners/")
 # np.save('learners_averaged_epochs.npy', amps)
 # np.save('times.npy', times)
 
-amps = np.load('/data/learners_averaged_epochs.npy')
+amps = np.load('data/learners_averaged_epochs.npy')
 
-times = np.load('/grw_learners/data/times.npy')
+times = np.load('data/times.npy')
 
 C = amps.shape[0] #number of conditions C
 E = amps.shape[1] #number of electrodes E 
@@ -85,20 +84,20 @@ S = amps.shape[2] #number of time-samples S
 
 ts = np.arange(S)/256
 
-from pymc3.distributions.timeseries import GaussianRandomWalk as GRW
+from pymc.distributions.timeseries import GaussianRandomWalk as GRW
 
 #### Model Learners
 with pm.Model() as mod:
     # create a theano shared variable of observed voltages, may be handy for predictions
     y_obs = pm.Data('y_obs', amps)
     # covariances: diagonal matrices of ones, 1 matrix per tone (i.e. 4 total)
-    Σ = [tt.eye(E) for c in range(C)]
+    Σ = [pt.eye(E) for c in range(C)]
     # Gaussian random walks (GRWs) 1 per tone
     g = [GRW("g"+str(c+1), shape=(S,E)) for c in range(C)]
     # Multivariate GRWs, 1 per tone
-    x = [pm.Deterministic('x'+str(c+1), tt.dot(Σ[c], g[c].T)) for c in range(C)]
+    x = [pm.Deterministic('x'+str(c+1), pt.dot(Σ[c], g[c].T)) for c in range(C)]
     # S (282) by E (32) by C (4) matrix (beta parameter), i.e. samples by electrode by condition(tone)
-    B = pm.Deterministic("B", tt.stack(x))
+    B = pm.Deterministic("B", pt.stack(x))
     # intercept of stationary Gaussian noise across samples S (i.e. time-samples)
     α = pm.Normal('α', mu=0, sigma=0.05, shape=(S))
     # Estimate location parameter for Normal distribution likelihood y
@@ -109,7 +108,7 @@ with pm.Model() as mod:
     y = pm.Normal("y", mu=μ, sigma=σ, observed=y_obs) 
     
 with mod:
-    trace = pm.sample(1000, tune=1000, cores=8, chains=4, init='adapt_diag', target_accept=0.9)
+    trace = pm.sample(nuts_sampler="numpyro", draws=1000, tune=1000, cores=8, chains=4, init='adapt_diag', target_accept=0.9)
 
     
 tracedir = "/grw_learners/trace/"
