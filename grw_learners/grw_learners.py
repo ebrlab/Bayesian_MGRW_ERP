@@ -200,6 +200,8 @@ plt.tight_layout()
 plt.savefig('predictions_learners.png', dpi=300)
 plt.close()
 
+
+"""
 ###### Plot Topomaps #####
 non_targets = np.array([trace['μ'][:,1,:,:],trace['μ'][:,2,:,:],trace['μ'][:,3,:,:]]).mean(axis=0)
 pdiff = trace['μ'][:,0,:,:]-non_targets
@@ -229,7 +231,7 @@ plt.close()
 mne.viz.plot_evoked_topomap(h95ev, times=selt,scalings=1, vmin=-5, vmax=5, show=False)
 plt.savefig('topomap_learners_h95.png', dpi=300)
 plt.close()
-
+"""
 #############################################
 
 ######### Save summaries ##########
