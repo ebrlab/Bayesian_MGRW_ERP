@@ -109,6 +109,7 @@ with pm.Model() as mod:
     
 with mod:
     trace = pm.sample(nuts_sampler="numpyro", draws=1000, tune=1000, cores=8, chains=4, init='adapt_diag', target_accept=0.9)
+    pm.compute_log_likelihood(trace)
 
 """
 tracedir = "/grw_learners/trace/"
@@ -229,8 +230,6 @@ mne.viz.plot_evoked_topomap(h95ev, times=selt,scalings=1, vmin=-5, vmax=5, show=
 plt.savefig('topomap_learners_h95.png', dpi=300)
 plt.close()
 
-
-
 #############################################
 
 ######### Save summaries ##########
@@ -249,7 +248,6 @@ plt.savefig("energy.png", dpi=300)
 plt.close()
 
 ########### Model fit
-
 loo = az.loo(trace, pointwise=True)
 loo = pd.DataFrame(loo)
 loo.to_csv("loo.csv")
@@ -259,8 +257,8 @@ waic = pd.DataFrame(waic)
 waic.to_csv('waic.csv')
 
 ###plot rank
-path = "/grw_learners/tranks/"
-varias = [v for v in trace.varnames if not "__" in v]
+path = "tranks/"
+varias = [v for v in trace.posterior.data_vars if not "__" in v]
 for var in tqdm(varias):
     err = az.plot_rank(trace, var_names=[var], kind='vlines', ref_line=True,
                        vlines_kwargs={'lw':1}, marker_vlines_kwargs={'lw':2})
