@@ -110,9 +110,10 @@ with pm.Model() as mod:
 with mod:
     trace = pm.sample(nuts_sampler="numpyro", draws=1000, tune=1000, cores=8, chains=4, init='adapt_diag', target_accept=0.9)
 
-    
+"""
 tracedir = "/grw_learners/trace/"
 pm.backends.ndarray.save_trace(trace, directory=tracedir, overwrite=True)
+"""
 
 # with mod:
 #     trace = pm.load_trace(tracedir)
@@ -133,16 +134,19 @@ for i in range(3):
         t = 3
         c='sienna'
     odiff = amps[0,12,:]-amps[t,12,:]
-    pdiff = trace['μ'][:,0,12,:]-trace['μ'][:,t,12,:]
-    postm = pdiff.mean(axis=0)
-    posth5, posth95 = az.hdi(pdiff, hdi_prob=0.9).T
+    pdiff = trace.posterior['μ'].stack(samples=("chain","draw"))[0,12,:]-trace.posterior['μ'].stack(samples=("chain","draw"))[t,12,:]
+    postm = pdiff.mean(axis=1).values
+    hdi_obj = az.hdi(pdiff, input_core_dims = [["samples"]])
+    posth95, posth5 = hdi_obj["μ"][:,1], hdi_obj["μ"][:,0]
+
     ax.set_ylim([-3,9])
     ax.grid(alpha=0.2, zorder=-1)
     ax.axvline(0, color='k', zorder=-1, linestyle=':')
     ax.axhline(0, color='k', zorder=-1, linestyle=':')
     ax.plot(times, odiff, alpha=0.3, color='k', label="observed voltage")
     ax.plot(times, postm, color=c, label="posterior mean")
-    ax.fill_between(times, posth5, posth95, color=c, alpha=0.3, label="90% HDI")
+    
+    ax.fill_between(times, posth95, posth5, color=c, alpha=0.3, label="90% HDI")
     ax.set_ylabel('Amplitude (μV)')
     ax.set_xlabel('Time (s)')
     ax.legend(fontsize=16, loc='lower right')
