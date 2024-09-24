@@ -177,10 +177,10 @@ for i in range(3):
         t = 3
         c='sienna'
     odiff = amps[0,12,:]-amps[t,12,:]
-    pdiff = preds['y'][:,0,12,:]-preds['y'][:,t,12,:]
-    predm = pdiff.mean(axis=0)
-    pred_sdl = predm - pdiff.std(axis=0)
-    pred_sdh = predm + pdiff.std(axis=0)
+    pdiff = preds.posterior_predictive['y'].stack(samples=("chain","draw"))[0,12,:]-preds.posterior_predictive['y'].stack(samples=("chain","draw"))[t,12,:]
+    predm = pdiff.mean(axis=1).values
+    pred_sdl = predm - pdiff.std(axis=1)
+    pred_sdh = predm + pdiff.std(axis=1)
     ax.set_ylim([-3,9])
     ax.grid(alpha=0.2, zorder=-1)
     ax.axvline(0, color='k', zorder=-1, linestyle=':')
@@ -198,7 +198,6 @@ axs[1,1].axis("off")
 plt.tight_layout()
 plt.savefig('predictions_learners.png', dpi=300)
 plt.close()
-
 
 ###### Plot Topomaps #####
 non_targets = np.array([trace['μ'][:,1,:,:],trace['μ'][:,2,:,:],trace['μ'][:,3,:,:]]).mean(axis=0)
