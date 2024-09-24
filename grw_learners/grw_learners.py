@@ -9,9 +9,9 @@ import pandas as pd
 import numpy as np
 import mne
 import matplotlib.pyplot as plt 
-import pymc3 as pm
+import pymc as pm
 import arviz as az
-import theano.tensor as tt
+import pytensor.tensor as pt
 import pickle
 
 #####plotting parameters
@@ -31,7 +31,6 @@ plt.rcParams['font.serif'] = "Cambria Math"
 #             sys.stdout = old_stdout
 
 # ############################## Import and prepare epochs ######################
-os.chdir("/grw_learners/")
 
 # files_l = glob.glob("/epochs_l/*t4_epo.fif")
 # files = files_l
@@ -75,9 +74,9 @@ os.chdir("/grw_learners/")
 # np.save('learners_averaged_epochs.npy', amps)
 # np.save('times.npy', times)
 
-amps = np.load('/data/learners_averaged_epochs.npy')
+amps = np.load('data/learners_averaged_epochs.npy')
 
-times = np.load('/grw_learners/data/times.npy')
+times = np.load('data/times.npy')
 
 C = amps.shape[0] #number of conditions C
 E = amps.shape[1] #number of electrodes E 
@@ -85,20 +84,20 @@ S = amps.shape[2] #number of time-samples S
 
 ts = np.arange(S)/256
 
-from pymc3.distributions.timeseries import GaussianRandomWalk as GRW
+from pymc.distributions.timeseries import GaussianRandomWalk as GRW
 
 #### Model Learners
 with pm.Model() as mod:
     # create a theano shared variable of observed voltages, may be handy for predictions
     y_obs = pm.Data('y_obs', amps)
     # covariances: diagonal matrices of ones, 1 matrix per tone (i.e. 4 total)
-    Σ = [tt.eye(E) for c in range(C)]
+    Σ = [pt.eye(E) for c in range(C)]
     # Gaussian random walks (GRWs) 1 per tone
     g = [GRW("g"+str(c+1), shape=(S,E)) for c in range(C)]
     # Multivariate GRWs, 1 per tone
-    x = [pm.Deterministic('x'+str(c+1), tt.dot(Σ[c], g[c].T)) for c in range(C)]
+    x = [pm.Deterministic('x'+str(c+1), pt.dot(Σ[c], g[c].T)) for c in range(C)]
     # S (282) by E (32) by C (4) matrix (beta parameter), i.e. samples by electrode by condition(tone)
-    B = pm.Deterministic("B", tt.stack(x))
+    B = pm.Deterministic("B", pt.stack(x))
     # intercept of stationary Gaussian noise across samples S (i.e. time-samples)
     α = pm.Normal('α', mu=0, sigma=0.05, shape=(S))
     # Estimate location parameter for Normal distribution likelihood y
@@ -109,11 +108,13 @@ with pm.Model() as mod:
     y = pm.Normal("y", mu=μ, sigma=σ, observed=y_obs) 
     
 with mod:
-    trace = pm.sample(1000, tune=1000, cores=8, chains=4, init='adapt_diag', target_accept=0.9)
+    trace = pm.sample(nuts_sampler="numpyro", draws=1000, tune=1000, cores=8, chains=4, init='adapt_diag', target_accept=0.9)
+    pm.compute_log_likelihood(trace)
 
-    
+"""
 tracedir = "/grw_learners/trace/"
 pm.backends.ndarray.save_trace(trace, directory=tracedir, overwrite=True)
+"""
 
 # with mod:
 #     trace = pm.load_trace(tracedir)
@@ -134,16 +135,19 @@ for i in range(3):
         t = 3
         c='sienna'
     odiff = amps[0,12,:]-amps[t,12,:]
-    pdiff = trace['μ'][:,0,12,:]-trace['μ'][:,t,12,:]
-    postm = pdiff.mean(axis=0)
-    posth5, posth95 = az.hdi(pdiff, hdi_prob=0.9).T
+    pdiff = trace.posterior['μ'].stack(samples=("chain","draw"))[0,12,:]-trace.posterior['μ'].stack(samples=("chain","draw"))[t,12,:]
+    postm = pdiff.mean(axis=1).values
+    hdi_obj = az.hdi(pdiff, input_core_dims = [["samples"]])
+    posth95, posth5 = hdi_obj["μ"][:,1], hdi_obj["μ"][:,0]
+
     ax.set_ylim([-3,9])
     ax.grid(alpha=0.2, zorder=-1)
     ax.axvline(0, color='k', zorder=-1, linestyle=':')
     ax.axhline(0, color='k', zorder=-1, linestyle=':')
     ax.plot(times, odiff, alpha=0.3, color='k', label="observed voltage")
     ax.plot(times, postm, color=c, label="posterior mean")
-    ax.fill_between(times, posth5, posth95, color=c, alpha=0.3, label="90% HDI")
+    
+    ax.fill_between(times, posth95, posth5, color=c, alpha=0.3, label="90% HDI")
     ax.set_ylabel('Amplitude (μV)')
     ax.set_xlabel('Time (s)')
     ax.legend(fontsize=16, loc='lower right')
@@ -174,10 +178,10 @@ for i in range(3):
         t = 3
         c='sienna'
     odiff = amps[0,12,:]-amps[t,12,:]
-    pdiff = preds['y'][:,0,12,:]-preds['y'][:,t,12,:]
-    predm = pdiff.mean(axis=0)
-    pred_sdl = predm - pdiff.std(axis=0)
-    pred_sdh = predm + pdiff.std(axis=0)
+    pdiff = preds.posterior_predictive['y'].stack(samples=("chain","draw"))[0,12,:]-preds.posterior_predictive['y'].stack(samples=("chain","draw"))[t,12,:]
+    predm = pdiff.mean(axis=1).values
+    pred_sdl = predm - pdiff.std(axis=1)
+    pred_sdh = predm + pdiff.std(axis=1)
     ax.set_ylim([-3,9])
     ax.grid(alpha=0.2, zorder=-1)
     ax.axvline(0, color='k', zorder=-1, linestyle=':')
@@ -197,6 +201,7 @@ plt.savefig('predictions_learners.png', dpi=300)
 plt.close()
 
 
+"""
 ###### Plot Topomaps #####
 non_targets = np.array([trace['μ'][:,1,:,:],trace['μ'][:,2,:,:],trace['μ'][:,3,:,:]]).mean(axis=0)
 pdiff = trace['μ'][:,0,:,:]-non_targets
@@ -226,9 +231,7 @@ plt.close()
 mne.viz.plot_evoked_topomap(h95ev, times=selt,scalings=1, vmin=-5, vmax=5, show=False)
 plt.savefig('topomap_learners_h95.png', dpi=300)
 plt.close()
-
-
-
+"""
 #############################################
 
 ######### Save summaries ##########
@@ -247,7 +250,6 @@ plt.savefig("energy.png", dpi=300)
 plt.close()
 
 ########### Model fit
-
 loo = az.loo(trace, pointwise=True)
 loo = pd.DataFrame(loo)
 loo.to_csv("loo.csv")
@@ -257,10 +259,11 @@ waic = pd.DataFrame(waic)
 waic.to_csv('waic.csv')
 
 ###plot rank
-path = "/grw_learners/tranks/"
-varias = [v for v in trace.varnames if not "__" in v]
+path = "tranks/"
+varias = [v for v in trace.posterior.data_vars if not "__" in v]
 for var in tqdm(varias):
     err = az.plot_rank(trace, var_names=[var], kind='vlines', ref_line=True,
                        vlines_kwargs={'lw':1}, marker_vlines_kwargs={'lw':2})
+    plt.tight_layout()
     plt.savefig(path+var+'_trank.png', dpi=300)
     plt.close()
