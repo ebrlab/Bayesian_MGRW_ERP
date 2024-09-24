@@ -262,5 +262,6 @@ varias = [v for v in trace.posterior.data_vars if not "__" in v]
 for var in tqdm(varias):
     err = az.plot_rank(trace, var_names=[var], kind='vlines', ref_line=True,
                        vlines_kwargs={'lw':1}, marker_vlines_kwargs={'lw':2})
+    plt.tight_layout()
     plt.savefig(path+var+'_trank.png', dpi=300)
     plt.close()
