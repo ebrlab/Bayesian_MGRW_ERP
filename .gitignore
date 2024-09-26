@@ -1,2 +1,6 @@
+.gitignore
 trace/
 grw_learners/grw_learners.ipynb
+grw_non_learners/grw_lkj_learners.ipynb
+grw_learners/trace_numpyro.nc
+grw_non_learners/trace_numpyro.nc
