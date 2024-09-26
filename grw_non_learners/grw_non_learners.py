@@ -106,18 +106,16 @@ with pm.Model() as mod:
     σ = pm.HalfNormal('σ', 0.05)+1
     # Likelihood or distribition for observed variable: amplitudes/volatges SxExC
     y = pm.Normal("y", mu=μ, sigma=σ, observed=y_obs)
-    
+
+"""   
 with mod:
     trace = pm.sample(nuts_sampler="numpyro", draws=1000, tune=1000, cores=8, chains=4, init='adapt_diag', target_accept=0.9)
     pm.compute_log_likelihood(trace)
 
-""" 
-tracedir = "/grw_non_learners/trace/"
-pm.backends.ndarray.save_trace(trace, directory=tracedir, overwrite=True)
-
-# with mod:
-#     trace = pm.load_trace(tracedir)
+trace.to_netcdf("trace_numpyro.nc")
 """
+
+trace = az.from_netcdf("trace_numpyro.nc")
 
 ###### Plot Posteriors #####
 fig, axs = plt.subplots(2,2, figsize=(14,10))
@@ -201,8 +199,34 @@ plt.tight_layout()
 plt.savefig('predictions_non_learners.png', dpi=300)
 plt.close()
 
-"""
 ###### Plot Topomaps #####
+mu_samples = trace.posterior['μ'].stack(samples=("chain","draw"))
+non_targets = np.array([mu_samples[1,:,:],mu_samples[2,:,:],mu_samples[3,:,:]]).mean(axis=0)
+pdiff = mu_samples[0,:,:]-non_targets
+mdiff = pdiff.mean(axis=1)
+h5diff,h95diff = np.array([az.hdi(pdiff[e,:], hdi_prob=0.9, input_core_dims = [["samples"]]).to_array() for e in range(E)]).T
+h5diff = np.squeeze(h5diff)
+h95diff = np.squeeze(h95diff)
+
+info_path = "data/info.fif"
+info = mne.io.read_info(info_path)
+h5ev = mne.EvokedArray(h5diff.T, info)
+mev = mne.EvokedArray(mdiff, info)
+h95ev = mne.EvokedArray(h95diff.T, info)
+
+selt = [0.2,0.4,0.6,0.8]
+
+mne.viz.plot_evoked_topomap(h5ev, times=selt,scalings=1, show=False)
+plt.savefig('topomap_non_learners_h5.png', dpi=300)
+plt.close()
+mne.viz.plot_evoked_topomap(mev, times=selt,scalings=1, show=False)
+plt.savefig('topomap_non_learners_mean.png', dpi=300)
+plt.close()
+mne.viz.plot_evoked_topomap(h95ev, times=selt,scalings=1, show=False)
+plt.savefig('topomap_non_learners_h95.png', dpi=300)
+plt.close()
+
+"""
 non_targets = np.array([trace['μ'][:,1,:,:],trace['μ'][:,2,:,:],trace['μ'][:,3,:,:]]).mean(axis=0)
 pdiff = trace['μ'][:,0,:,:]-non_targets
 mdiff = pdiff.mean(axis=0)
